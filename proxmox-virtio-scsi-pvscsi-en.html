@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="index,follow">
+<meta name="description" content="A tested, step-by-step guide to adding a VirtIO SCSI controller alongside an existing VMware PVSCSI controller in Proxmox VE with a Windows 11 guest — including qm commands, Device Manager steps and full troubleshooting.">
+<meta name="keywords" content="Proxmox, Proxmox VE, VirtIO SCSI, virtio-scsi-pci, VMware PVSCSI, pvscsi, qm set, qm config, Windows 11, Device Manager, Storage controllers, add SCSI controller, second SCSI controller">
+<link rel="alternate" hreflang="fa" href="proxmox-virtio-scsi-pvscsi-fa.html">
+<title>How to Add a VirtIO SCSI Controller Alongside VMware PVSCSI in Proxmox VE (Windows 11)</title>
+<style>
+:root{color-scheme:dark;--bg:#05070c;--panel:#0c111b;--panel2:#111a28;--text:#f0f4fb;--muted:#a7b4c8;--line:#253146;--accent:#75caff;--warn:#ffd27a;--good:#8be0b0}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI",Tahoma,Arial,sans-serif;line-height:1.95}
+main{max-width:1000px;margin:auto;padding:28px 18px 60px}
+header{padding:26px;border:1px solid var(--line);border-radius:18px;background:linear-gradient(145deg,#101827,#090d15);margin-bottom:22px}
+h1{font-size:clamp(1.5rem,4vw,2.2rem);line-height:1.5;margin:0 0 12px}
+h2{font-size:1.35rem;margin:0 0 12px}
+h3{font-size:1.08rem;margin:18px 0 8px}
+p{margin:8px 0 12px}
+.sub{color:var(--muted)}
+section{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:22px;margin:16px 0}
+.notice{padding:13px 16px;border-radius:10px;border-left:4px solid var(--warn);background:#211b10;color:#fff0ce;margin:14px 0}
+.success{border-left-color:var(--good);background:#0d211b;color:#d8ffea}
+code,pre{font-family:Consolas,"Courier New",monospace;direction:ltr;text-align:left}
+pre{overflow-x:auto;background:#03060a;border:1px solid #202b3d;border-radius:10px;padding:15px;color:#eaf4ff;white-space:pre}
+.inline{background:#182438;border-radius:5px;padding:2px 6px;direction:ltr;display:inline-block}
+ul,ol{padding-left:24px}
+li{margin:5px 0}
+table{width:100%;border-collapse:collapse;margin:12px 0}
+th,td{border:1px solid var(--line);padding:10px;text-align:left;vertical-align:top}
+th{background:var(--panel2)}
+.small{font-size:.92rem;color:var(--muted)}
+.pill{display:inline-block;padding:3px 10px;border-radius:999px;background:#14263b;color:#bfe6ff;font-size:.85rem}
+footer{color:var(--muted);font-size:.9rem;text-align:center;padding-top:20px}
+@media(max-width:600px){main{padding:14px 10px 35px}section,header{padding:16px}table{font-size:.9rem}pre{font-size:.82rem}}
+@media print{body{background:#fff;color:#111}header,section{background:#fff;border-color:#ccc}pre{background:#f4f4f4;color:#111} .notice,.success{background:#fff;color:#111}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <span class="pill">Practical guide • Proxmox VE / Windows 11</span>
+  <h1>Adding a VirtIO SCSI Controller Alongside VMware PVSCSI</h1>
+  <p>This guide describes a method tested in a real Proxmox environment: the existing VMware PVSCSI controller and the disks attached to it are preserved, and an additional VirtIO SCSI controller is introduced to QEMU so that Windows can recognize it.</p>
+  <p class="sub">Example environment: Proxmox VE 9.2, Windows 11, VMID 105. Always verify the VMID and current state in your own environment.</p>
+  <p class="sub">🌐 نسخه فارسی: <a href="proxmox-virtio-scsi-pvscsi-fa.html" style="color:var(--accent)">راهنمای افزودن کنترلر VirtIO SCSI کنار VMware PVSCSI در Proxmox</a></p>
+</header>
+
+<section>
+<h2>Before You Start: Important Notes</h2>
+<ul>
+<li>This work is for server administrators and should be performed on a test VM or one that has a backup.</li>
+<li>The method below uses a custom QEMU argument; a custom controller may not enjoy the same coverage as hardware defined through the normal Proxmox UI in all management operations, migration, or troubleshooting.</li>
+<li>Back up the VM configuration. This backup only keeps the configuration file, not the data on the disks.</li>
+<li>If the VM already has an <code class="inline">args:</code> line in its configuration, do not blindly replace it — check the existing value first. The sample command may overwrite a previous <code class="inline">args</code> value.</li>
+<li>In this scenario the second controller is added without any disks. Attaching disks to it is a separate step.</li>
+</ul>
+<div class="notice"><strong>Warning:</strong> shut the VM down completely before running the final command. If the VM is important or production, test the method on a test VM first, and test Backup/Restore and Migration according to your organization's requirements.</div>
+</section>
+
+<section>
+<h2>Step 1 — Open the Shell in Proxmox</h2>
+<ol>
+<li>Log in to the Proxmox web panel; the address is usually <code class="inline">https://server-IP:8006</code>.</li>
+<li>Select the target Node from the left-hand column.</li>
+<li>Open <strong>Shell</strong>. Run all commands from this guide in the Proxmox host shell, not inside the Windows guest.</li>
+</ol>
+</section>
+
+<section>
+<h2>Step 2 — Find the Virtual Machine ID</h2>
+<pre><code>qm list</code></pre>
+<p><strong>What it does:</strong> lists the virtual machines with their ID (VMID), name, and status.</p>
+<p>In this guide the example ID is <code class="inline">105</code>. If your VM has a different ID, replace it in the following commands.</p>
+</section>
+
+<section>
+<h2>Step 3 — Review the Current VM Configuration</h2>
+<pre><code>qm config 105</code></pre>
+<p><strong>What it does:</strong> shows the configuration of VM 105. In the example environment, the key entries were:</p>
+<table>
+<thead><tr><th>Setting</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>scsihw: pvscsi</code></td><td>The current SCSI controller model is VMware PVSCSI.</td></tr>
+<tr><td><code>scsi0</code>, <code>scsi1</code>, <code>scsi2</code></td><td>Three existing disks attached to the current SCSI controller.</td></tr>
+<tr><td><code>ide2: local:iso/virtio-win-....iso</code></td><td>The VirtIO drivers ISO is attached to the VM; the path/name may differ in each environment.</td></tr>
+<tr><td><code>machine: pc-q35-...</code></td><td>The machine type is Q35.</td></tr>
+</tbody>
+</table>
+<p>If the current controller is PVSCSI, do <strong>not</strong> change the <code class="inline">scsihw: pvscsi</code> line; the goal is to keep it and add a second controller.</p>
+</section>
+
+<section>
+<h2>Step 4 — Back Up the Configuration File</h2>
+<pre><code>cp /etc/pve/qemu-server/105.conf /root/105.conf.backup</code></pre>
+<p><strong>Meaning of each part:</strong></p>
+<ul>
+<li><code class="inline">cp</code>: copies the file.</li>
+<li><code class="inline">/etc/pve/qemu-server/105.conf</code>: the main configuration file of VM 105.</li>
+<li><code class="inline">/root/105.conf.backup</code>: the path where the backup copy is stored.</li>
+</ul>
+<p>This command only copies the VM configuration; it does <strong>not</strong> back up the contents of the virtual disks.</p>
+<p>To confirm the file was created:</p>
+<pre><code>ls -l /root/105.conf.backup</code></pre>
+<p>The <code class="inline">ls -l</code> command shows the file's existence, size, and modification time.</p>
+</section>
+
+<section>
+<h2>Step 5 — (Optional) Inspect the QEMU Command</h2>
+<pre><code>qm showcmd 105 --pretty</code></pre>
+<p><strong>What it does:</strong> displays the command Proxmox builds to run the VM under QEMU. The <code class="inline">--pretty</code> option makes the output more readable. This command does not start the VM or change the configuration by itself.</p>
+<p>In the sample output, the existing controller was built with a line similar to:</p>
+<pre><code>-device 'pvscsi,id=scsihw0,bus=pci.0,addr=0x5'</code></pre>
+<p>and the disks were attached to this controller's bus. This step is useful for understanding the current state, but is not mandatory for every installation.</p>
+</section>
+
+<section>
+<h2>Step 6 — Shut Down the VM</h2>
+<p>From the Proxmox UI, shut the target VM down normally and make sure its status is <strong>stopped</strong>. Avoid force-stopping the VM unless absolutely necessary.</p>
+<p>To check the status you can use:</p>
+<pre><code>qm status 105</code></pre>
+<p>This command shows the VM's status; the VM must be stopped before changing its configuration.</p>
+</section>
+
+<section>
+<h2>Step 7 — Add the Second (VirtIO SCSI) Controller</h2>
+<p>In the example environment, the following command was accepted and Proxmox reported that the VM configuration had been updated:</p>
+<pre><code>qm set 105 --args '-device virtio-scsi-pci,id=virtioscsi1,bus=pci.0'</code></pre>
+<p><strong>Meaning of each part:</strong></p>
+<table>
+<thead><tr><th>Part</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>qm set 105</code></td><td>Modifies the configuration of VM 105.</td></tr>
+<tr><td><code>--args</code></td><td>Registers extra arguments for QEMU.</td></tr>
+<tr><td><code>-device virtio-scsi-pci</code></td><td>Requests creation of a virtual VirtIO SCSI controller.</td></tr>
+<tr><td><code>id=virtioscsi1</code></td><td>A unique internal identifier for this device in QEMU.</td></tr>
+<tr><td><code>bus=pci.0</code></td><td>Attaches the controller to the VM's PCI bus.</td></tr>
+</tbody>
+</table>
+<div class="notice"><strong>Important technical note:</strong> this command adds a custom QEMU argument to the configuration; do not treat it as the official "add a second controller" feature of the Proxmox UI. If a previous <code>args</code> value exists, keep it and merge it with the new argument — the command above may overwrite the previous value. Also note that a custom controller may need separate checks for migration, backup/restore, and compatibility with future versions.</div>
+</section>
+
+<section>
+<h2>Step 8 — Verify the Configuration Was Saved</h2>
+<pre><code>qm config 105</code></pre>
+<p>In the output, check that a line similar to the following exists:</p>
+<pre><code>args: -device virtio-scsi-pci,id=virtioscsi1,bus=pci.0</code></pre>
+<p>This only confirms that the argument was recorded in the configuration; by itself it does not prove the controller will be created without errors when the VM runs.</p>
+</section>
+
+<section>
+<h2>Step 9 — Start the VM and Check Windows</h2>
+<ol>
+<li>Start the virtual machine from the Proxmox UI.</li>
+<li>If the VM fails to start, do not retry repeatedly; inspect the error message and review the configuration before making further changes.</li>
+<li>Inside Windows 11, press <code class="inline">Win + X</code> and open <strong>Device Manager</strong>.</li>
+<li>Check the <strong>Storage controllers</strong> and <strong>Other devices</strong> sections. The device name may differ slightly depending on the QEMU version and driver.</li>
+<li>If the controller appears without a driver, use the VirtIO drivers ISO attached to the VM. Pick the driver matching your Windows version and guest architecture; avoid picking an INF file at random.</li>
+<li>After installation, check the device status in Device Manager and restart Windows if needed.</li>
+</ol>
+<p class="small">Installing the driver alone does not create the virtual controller — QEMU must present the device to the VM. Conversely, having the argument in the configuration does not guarantee Windows will recognize the device without errors.</p>
+</section>
+
+<section>
+<h2>Troubleshooting and Rollback</h2>
+<h3>If the VM does not start</h3>
+<ul>
+<li>Save the full Proxmox error message.</li>
+<li>Confirm the VM was stopped and that the <code class="inline">args</code> value does not conflict with previous arguments.</li>
+<li>Do not replace the configuration file with the backup without checking it first; review the differences between the current file and the backup.</li>
+</ul>
+<h3>Compare the configuration with the backup</h3>
+<pre><code>diff -u /root/105.conf.backup /etc/pve/qemu-server/105.conf</code></pre>
+<p>This command only shows the differences between the two files and changes nothing.</p>
+<h3>If you need to remove the custom setting</h3>
+<p>First make sure the VM is stopped and that the current <code class="inline">args</code> value contains only the intended argument. If <code>args</code> holds other settings too, deleting it entirely may remove those as well; in that case edit only the controller-related argument carefully.</p>
+<p>If the <code>args</code> value is exactly the sample line and has no other settings, the custom setting can be removed with:</p>
+<pre><code>qm set 105 --delete args</code></pre>
+<p>This command removes the entire <code class="inline">args</code> option from the VM configuration, so only use it when you are sure nothing else is stored there. Then verify the configuration with <code class="inline">qm config 105</code>.</p>
+</section>
+
+<section>
+<h2>Final Checklist</h2>
+<ul>
+<li>☐ The correct VMID was selected.</li>
+<li>☐ The configuration file was backed up.</li>
+<li>☐ The VM was stopped before the change.</li>
+<li>☐ The existing PVSCSI controller and its disks were not modified.</li>
+<li>☐ The VirtIO SCSI argument was recorded in the configuration.</li>
+<li>☐ The VM started without errors.</li>
+<li>☐ The controller was checked in Device Manager and the proper driver is installed.</li>
+<li>☐ The impact of the custom method on backup/restore and migration was tested in the target environment.</li>
+</ul>
+<div class="notice success"><strong>Reminder for colleagues:</strong> perform this on a test VM first. The VMID, ISO path, and Proxmox version may differ in your server. A successful result in one environment does not guarantee success everywhere.</div>
+</section>
+
+<footer>Editable internal guide — for team use, keep your environment's specifics and your organization's approved steps up to date.</footer>
+</main>
+</body>
+</html>
