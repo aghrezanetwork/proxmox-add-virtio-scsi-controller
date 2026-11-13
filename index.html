@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="index,follow">
+<meta name="description" content="Add a VirtIO SCSI controller alongside VMware PVSCSI in Proxmox VE (Windows 11 guest) — tested step-by-step guide in English and Persian / راهنمای افزودن کنترلر VirtIO SCSI در کنار PVSCSI در Proxmox">
+<meta name="keywords" content="Proxmox, Proxmox VE, VirtIO SCSI, virtio-scsi-pci, VMware PVSCSI, pvscsi, Windows 11, Device Manager, qm set, second SCSI controller, کنترلر SCSI, پراکسموکس">
+<title>Add VirtIO SCSI Controller Alongside PVSCSI in Proxmox — Guide (EN/FA)</title>
+<style>
+:root{color-scheme:dark;--bg:#05070c;--panel:#0c111b;--line:#253146;--text:#f0f4fb;--muted:#a7b4c8;--accent:#75caff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI",Tahoma,Arial,sans-serif;line-height:1.9}
+main{max-width:760px;margin:auto;padding:40px 18px 60px}
+h1{font-size:clamp(1.4rem,4vw,2rem);line-height:1.6}
+section{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:24px;margin:16px 0}
+a.btn{display:block;text-decoration:none;color:#eaf4ff;background:#14263b;border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:10px 0;font-size:1.05rem}
+a.btn:hover{border-color:var(--accent);color:#fff}
+small,.muted{color:var(--muted)}
+code{background:#182438;border-radius:5px;padding:2px 6px;font-family:Consolas,monospace}
+</style>
+</head>
+<body>
+<main>
+<h1>Adding a VirtIO SCSI Controller Alongside VMware PVSCSI in Proxmox VE</h1>
+<p class="muted">راهنمای افزودن کنترلر VirtIO SCSI در کنار کنترلر VMware PVSCSI در Proxmox VE (ویندوز ۱۱)</p>
+
+<section>
+<p>A tested, step-by-step guide for keeping your existing <code>pvscsi</code> controller and disks intact while introducing a second <code>virtio-scsi-pci</code> controller via <code>qm set --args</code>, then installing the driver from the VirtIO ISO in Windows 11 — including full troubleshooting and rollback steps.</p>
+<p>راهنمای گام‌به‌گام و آزمایش‌شده: حفظ کنترلر <code>pvscsi</code> موجود و دیسک‌های آن، افزودن کنترلر دوم <code>virtio-scsi-pci</code> با <code>qm set --args</code>، نصب درایور از ISO مربوط به ویندوز ۱۱ — همراه با عیب‌یابی و بازگشت به وضعیت قبلی.</p>
+</section>
+
+<section>
+<h2>Choose your language / زبان را انتخاب کنید</h2>
+<a class="btn" href="proxmox-virtio-scsi-pvscsi-en.html">🇬🇧 English guide — Add a VirtIO SCSI controller alongside VMware PVSCSI</a>
+<a class="btn" href="proxmox-virtio-scsi-pvscsi-fa.html">🇮🇷 راهنمای فارسی — افزودن کنترلر VirtIO SCSI کنار VMware PVSCSI</a>
+</section>
+
+<section>
+<h2>Quick command / دستور اصلی</h2>
+<p><code>qm set 105 --args '-device virtio-scsi-pci,id=virtioscsi1,bus=pci.0'</code></p>
+<p class="muted"><small>See the full guide for prerequisites, backup steps, Windows 11 driver installation and rollback. / پیش‌نیازها، پشتیبان‌گیری، نصب درایور در ویندوز و بازگشت به وضعیت قبلی را در راهنمای کامل ببینید.</small></p>
+</section>
+</main>
+</body>
+</html>
