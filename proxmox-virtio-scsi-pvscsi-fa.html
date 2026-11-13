@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="index,follow">
+<meta name="description" content="راهنمای گام‌به‌گام و آزمایش‌شده برای افزودن کنترلر VirtIO SCSI در کنار کنترلر VMware PVSCSI در Proxmox VE با گست ویندوز ۱۱ — شامل دستورات qm، قدم‌به‌قدم Device Manager و عیب‌یابی کامل.">
+<meta name="keywords" content="Proxmox, Proxmox VE, VirtIO SCSI, virtio-scsi-pci, VMware PVSCSI, pvscsi, qm set, qm config, Windows 11, Device Manager, Storage controllers, کنترلر SCSI, پراکسموکس, افزودن کنترلر, ویندوز ۱۱">
+<link rel="alternate" hreflang="en" href="proxmox-virtio-scsi-pvscsi-en.html">
+<title>راهنمای افزودن کنترلر VirtIO SCSI کنار VMware PVSCSI در Proxmox VE (ویندوز ۱۱)</title>
+<style>
+:root{color-scheme:dark;--bg:#05070c;--panel:#0c111b;--panel2:#111a28;--text:#f0f4fb;--muted:#a7b4c8;--line:#253146;--accent:#75caff;--warn:#ffd27a;--good:#8be0b0}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Tahoma,"Segoe UI",Arial,sans-serif;line-height:1.95}
+main{max-width:1000px;margin:auto;padding:28px 18px 60px}
+header{padding:26px;border:1px solid var(--line);border-radius:18px;background:linear-gradient(145deg,#101827,#090d15);margin-bottom:22px}
+h1{font-size:clamp(1.5rem,4vw,2.2rem);line-height:1.5;margin:0 0 12px}
+h2{font-size:1.35rem;margin:0 0 12px}
+h3{font-size:1.08rem;margin:18px 0 8px}
+p{margin:8px 0 12px}
+.sub{color:var(--muted)}
+section{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:22px;margin:16px 0}
+.notice{padding:13px 16px;border-radius:10px;border-right:4px solid var(--warn);background:#211b10;color:#fff0ce;margin:14px 0}
+.success{border-right-color:var(--good);background:#0d211b;color:#d8ffea}
+code,pre{font-family:Consolas,"Courier New",monospace;direction:ltr;text-align:left}
+pre{overflow-x:auto;background:#03060a;border:1px solid #202b3d;border-radius:10px;padding:15px;color:#eaf4ff;white-space:pre}
+.inline{background:#182438;border-radius:5px;padding:2px 6px;direction:ltr;display:inline-block}
+ul,ol{padding-right:24px}
+li{margin:5px 0}
+table{width:100%;border-collapse:collapse;margin:12px 0}
+th,td{border:1px solid var(--line);padding:10px;text-align:right;vertical-align:top}
+th{background:var(--panel2)}
+.small{font-size:.92rem;color:var(--muted)}
+.pill{display:inline-block;padding:3px 10px;border-radius:999px;background:#14263b;color:#bfe6ff;font-size:.85rem}
+footer{color:var(--muted);font-size:.9rem;text-align:center;padding-top:20px}
+@media(max-width:600px){main{padding:14px 10px 35px}section,header{padding:16px}table{font-size:.9rem}pre{font-size:.82rem}}
+@media print{body{background:#fff;color:#111}header,section{background:#fff;border-color:#ccc}pre{background:#f4f4f4;color:#111} .notice,.success{background:#fff;color:#111}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <span class="pill">راهنمای عملیاتی • Proxmox VE / Windows 11</span>
+  <p class="sub" style="margin-top:10px">🌐 English version: <a href="proxmox-virtio-scsi-pvscsi-en.html" style="color:var(--accent)">Add a VirtIO SCSI controller alongside VMware PVSCSI in Proxmox</a></p>
+  <h1>افزودن کنترلر VirtIO SCSI در کنار VMware PVSCSI</h1>
+  <p>این راهنما روش آزمایش‌شده در یک محیط Proxmox را توضیح می‌دهد: کنترلر VMware PVSCSI موجود و دیسک‌های متصل به آن حفظ می‌شوند و یک کنترلر VirtIO SCSI اضافی به QEMU معرفی می‌شود تا ویندوز بتواند آن را شناسایی کند.</p>
+  <p class="sub">نمونه محیط: Proxmox VE 9.2، ویندوز ۱۱، VMID برابر 105. در محیط خودتان VMID و وضعیت را حتماً بررسی کنید.</p>
+</header>
+
+<section>
+<h2>قبل از شروع: نکات مهم</h2>
+<ul>
+<li>این کار برای مدیر سرور و روی VM آزمایشی/دارای نسخه پشتیبان انجام شود.</li>
+<li>روش زیر از آرگومان سفارشی QEMU استفاده می‌کند؛ کنترلر سفارشی ممکن است مانند سخت‌افزار تعریف‌شده از طریق رابط عادی Proxmox در همه عملیات مدیریتی، Migration یا عیب‌یابی پوشش یکسانی نداشته باشد.</li>
+<li>از تنظیمات VM نسخه پشتیبان بگیرید. این نسخه پشتیبان فقط فایل پیکربندی را نگه می‌دارد، نه داده‌های داخل دیسک‌ها.</li>
+<li>اگر VM از قبل مقدار <code class="inline">args:</code> در تنظیمات دارد، آن را کورکورانه جایگزین نکنید؛ ابتدا مقدار موجود را بررسی کنید. دستور نمونه ممکن است مقدار قبلی <code class="inline">args</code> را جایگزین کند.</li>
+<li>در این سناریو کنترلر دوم بدون دیسک اضافه می‌شود. اضافه‌کردن دیسک به آن مرحله‌ای جداگانه است.</li>
+</ul>
+<div class="notice"><strong>هشدار:</strong> پیش از اجرای دستور نهایی، VM را کاملاً خاموش کنید. اگر VM مهم یا عملیاتی است، ابتدا روش را روی یک VM تستی اجرا و Backup/Restore و Migration را طبق نیاز سازمان آزمایش کنید.</div>
+</section>
+
+<section>
+<h2>مرحله ۱ — بازکردن Shell در Proxmox</h2>
+<ol>
+<li>وارد پنل وب Proxmox شوید؛ معمولاً نشانی به شکل <code class="inline">https://IP-سرور:8006</code> است.</li>
+<li>از ستون سمت چپ، Node موردنظر را انتخاب کنید.</li>
+<li>گزینه <strong>Shell</strong> را باز کنید. دستورات این راهنما را در Shell میزبان Proxmox اجرا کنید، نه داخل ویندوز مهمان.</li>
+</ol>
+</section>
+
+<section>
+<h2>مرحله ۲ — پیدا کردن شناسه ماشین مجازی</h2>
+<pre><code>qm list</code></pre>
+<p><strong>کار دستور:</strong> فهرست ماشین‌های مجازی، شناسه (VMID)، نام و وضعیت آن‌ها را نمایش می‌دهد.</p>
+<p>در این راهنما شناسه نمونه <code class="inline">105</code> است. اگر VM شما شناسه دیگری دارد، در دستورهای بعدی آن را جایگزین کنید.</p>
+</section>
+
+<section>
+<h2>مرحله ۳ — بررسی پیکربندی فعلی VM</h2>
+<pre><code>qm config 105</code></pre>
+<p><strong>کار دستور:</strong> تنظیمات VM شماره 105 را نشان می‌دهد. در نمونه این راهنما، موارد کلیدی چنین بودند:</p>
+<table>
+<thead><tr><th>تنظیم</th><th>معنی</th></tr></thead>
+<tbody>
+<tr><td><code>scsihw: pvscsi</code></td><td>مدل کنترلر SCSI فعلی VMware PVSCSI است.</td></tr>
+<tr><td><code>scsi0</code>، <code>scsi1</code>، <code>scsi2</code></td><td>سه دیسک موجود که به کنترلر SCSI فعلی متصل‌اند.</td></tr>
+<tr><td><code>ide2: local:iso/virtio-win-....iso</code></td><td>ISO درایورهای VirtIO به VM متصل است؛ مسیر/نام ISO در هر محیط ممکن است متفاوت باشد.</td></tr>
+<tr><td><code>machine: pc-q35-...</code></td><td>نوع ماشین مجازی Q35 است.</td></tr>
+</tbody>
+</table>
+<p>اگر کنترلر فعلی PVSCSI است، خط <code class="inline">scsihw: pvscsi</code> را تغییر ندهید؛ هدف، حفظ آن و اضافه‌کردن کنترلر دوم است.</p>
+</section>
+
+<section>
+<h2>مرحله ۴ — گرفتن نسخه پشتیبان از فایل تنظیمات</h2>
+<pre><code>cp /etc/pve/qemu-server/105.conf /root/105.conf.backup</code></pre>
+<p><strong>معنی اجزا:</strong></p>
+<ul>
+<li><code class="inline">cp</code>: فایل را کپی می‌کند.</li>
+<li><code class="inline">/etc/pve/qemu-server/105.conf</code>: فایل پیکربندی اصلی VM شماره 105 است.</li>
+<li><code class="inline">/root/105.conf.backup</code>: مسیر ذخیره کپی پشتیبان است.</li>
+</ul>
+<p>این دستور فقط از تنظیمات VM کپی می‌گیرد؛ از محتویات دیسک مجازی Backup تهیه نمی‌کند.</p>
+<p>برای اطمینان از ساخته‌شدن فایل:</p>
+<pre><code>ls -l /root/105.conf.backup</code></pre>
+<p>دستور <code class="inline">ls -l</code> وجود فایل، اندازه و زمان تغییر آن را نمایش می‌دهد.</p>
+</section>
+
+<section>
+<h2>مرحله ۵ — (اختیاری) دیدن فرمان QEMU</h2>
+<pre><code>qm showcmd 105 --pretty</code></pre>
+<p><strong>کار دستور:</strong> فرمانی را نمایش می‌دهد که Proxmox برای اجرای VM به QEMU می‌سازد. گزینه <code class="inline">--pretty</code> خروجی را خواناتر می‌کند. این دستور به‌خودی‌خود VM را روشن یا پیکربندی را تغییر نمی‌دهد.</p>
+<p>در خروجی نمونه، کنترلر موجود با خطی مشابه این ساخته شده بود:</p>
+<pre><code>-device 'pvscsi,id=scsihw0,bus=pci.0,addr=0x5'</code></pre>
+<p>و دیسک‌ها به گذرگاه همین کنترلر متصل بودند. این مرحله برای شناخت وضعیت فعلی مفید است، اما برای همه نصب‌ها الزام‌آور نیست.</p>
+</section>
+
+<section>
+<h2>مرحله ۶ — خاموش‌کردن VM</h2>
+<p>از رابط Proxmox، VM موردنظر را به‌صورت عادی خاموش کنید و مطمئن شوید وضعیت آن <strong>stopped</strong> است. از خاموش‌کردن اجباری VM مگر در شرایط ضروری خودداری کنید.</p>
+<p>برای مشاهده وضعیت می‌توانید از این دستور استفاده کنید:</p>
+<pre><code>qm status 105</code></pre>
+<p>این دستور وضعیت VM را نشان می‌دهد؛ برای تغییر تنظیمات، VM باید خاموش باشد.</p>
+</section>
+
+<section>
+<h2>مرحله ۷ — افزودن کنترلر VirtIO SCSI دوم</h2>
+<p>در محیط نمونه، دستور زیر پذیرفته شد و Proxmox اعلام کرد تنظیمات VM به‌روزرسانی شده است:</p>
+<pre><code>qm set 105 --args '-device virtio-scsi-pci,id=virtioscsi1,bus=pci.0'</code></pre>
+<p><strong>معنی هر بخش:</strong></p>
+<table>
+<thead><tr><th>بخش</th><th>کاربرد</th></tr></thead>
+<tbody>
+<tr><td><code>qm set 105</code></td><td>تغییر تنظیمات VM شماره 105.</td></tr>
+<tr><td><code>--args</code></td><td>ثبت آرگومان‌های اضافی برای QEMU.</td></tr>
+<tr><td><code>-device virtio-scsi-pci</code></td><td>درخواست ایجاد کنترلر VirtIO SCSI مجازی.</td></tr>
+<tr><td><code>id=virtioscsi1</code></td><td>شناسه داخلی یکتا برای این دستگاه در QEMU.</td></tr>
+<tr><td><code>bus=pci.0</code></td><td>اتصال کنترلر به گذرگاه PCI ماشین مجازی.</td></tr>
+</tbody>
+</table>
+<div class="notice"><strong>نکته فنی مهم:</strong> این دستور آرگومان سفارشی QEMU را به پیکربندی اضافه می‌کند؛ آن را معادل قابلیت رسمی «افزودن کنترلر دوم» در رابط Proxmox در نظر نگیرید. در صورت وجود <code>args</code> قبلی، آن را حفظ و با آرگومان جدید ترکیب کنید؛ دستور بالا ممکن است مقدار قبلی را جایگزین کند. همچنین کنترلر سفارشی ممکن است نیازمند بررسی جداگانه برای Migration، Backup/Restore و سازگاری با نسخه‌های بعدی باشد.</div>
+</section>
+
+<section>
+<h2>مرحله ۸ — تأیید ذخیره‌شدن تنظیمات</h2>
+<pre><code>qm config 105</code></pre>
+<p>در خروجی بررسی کنید خطی شبیه زیر وجود داشته باشد:</p>
+<pre><code>args: -device virtio-scsi-pci,id=virtioscsi1,bus=pci.0</code></pre>
+<p>این فقط تأیید می‌کند آرگومان در پیکربندی ثبت شده است؛ به‌تنهایی ثابت نمی‌کند کنترلر در زمان اجرای VM بدون خطا ساخته می‌شود.</p>
+</section>
+
+<section>
+<h2>مرحله ۹ — روشن‌کردن VM و بررسی ویندوز</h2>
+<ol>
+<li>از رابط Proxmox ماشین مجازی را روشن کنید.</li>
+<li>اگر VM روشن نشد، تلاش‌های مکرر نکنید؛ پیام خطا را بررسی کنید و تنظیمات را قبل از تغییر بیشتر بازبینی کنید.</li>
+<li>داخل Windows 11، کلیدهای <code class="inline">Win + X</code> را بزنید و <strong>Device Manager</strong> را باز کنید.</li>
+<li>بخش‌های <strong>Storage controllers</strong> و <strong>Other devices</strong> را بررسی کنید. نام دستگاه ممکن است بسته به نسخه QEMU و درایور کمی متفاوت باشد.</li>
+<li>اگر کنترلر ظاهر شد اما درایور نداشت، از ISO درایورهای VirtIO متصل به VM استفاده کنید. درایور متناسب با Windows و معماری مهمان را انتخاب کنید؛ از انتخاب تصادفی فایل INF خودداری کنید.</li>
+<li>پس از نصب، در Device Manager وضعیت دستگاه را بررسی کنید و در صورت نیاز ویندوز را Restart کنید.</li>
+</ol>
+<p class="small">نصب درایور به‌تنهایی کنترلر مجازی را ایجاد نمی‌کند؛ QEMU باید دستگاه را به VM ارائه کند. از طرف دیگر، وجود آرگومان در پیکربندی به‌تنهایی تضمین نمی‌کند ویندوز دستگاه را بدون خطا شناسایی کند.</p>
+</section>
+
+<section>
+<h2>عیب‌یابی و بازگشت به وضعیت قبلی</h2>
+<h3>اگر VM روشن نمی‌شود</h3>
+<ul>
+<li>متن کامل خطای Proxmox را ذخیره کنید.</li>
+<li>بررسی کنید VM خاموش بوده و مقدار <code class="inline">args</code> با آرگومان‌های قبلی تداخل نداشته باشد.</li>
+<li>بدون بررسی، فایل تنظیمات را با نسخه پشتیبان جایگزین نکنید؛ ابتدا تفاوت فایل فعلی و پشتیبان را بررسی کنید.</li>
+</ul>
+<h3>بررسی تفاوت پیکربندی با نسخه پشتیبان</h3>
+<pre><code>diff -u /root/105.conf.backup /etc/pve/qemu-server/105.conf</code></pre>
+<p>این دستور فقط تفاوت دو فایل را نمایش می‌دهد و چیزی را تغییر نمی‌دهد.</p>
+<h3>اگر لازم شد تنظیم سفارشی را حذف کنید</h3>
+<p>ابتدا مطمئن شوید VM خاموش است و مقدار فعلی <code class="inline">args</code> فقط همان آرگومان موردنظر است. اگر <code>args</code> تنظیم دیگری هم دارد، حذف کامل آن ممکن است تنظیمات دیگری را نیز از بین ببرد؛ در آن حالت فقط آرگومان مربوط به کنترلر را با دقت اصلاح کنید.</p>
+<p>اگر مقدار <code>args</code> دقیقاً همان خط نمونه است و تنظیم اضافی دیگری ندارد، می‌توان تنظیم سفارشی را با این دستور حذف کرد:</p>
+<pre><code>qm set 105 --delete args</code></pre>
+<p>این دستور کل گزینه <code class="inline">args</code> را از تنظیمات VM حذف می‌کند؛ بنابراین فقط وقتی استفاده کنید که مطمئن هستید مقدار دیگری در آن وجود ندارد. سپس تنظیمات را با <code class="inline">qm config 105</code> بررسی کنید.</p>
+</section>
+
+<section>
+<h2>چک‌لیست نهایی</h2>
+<ul>
+<li>☐ VMID درست انتخاب شده است.</li>
+<li>☐ از فایل تنظیمات نسخه پشتیبان گرفته شده است.</li>
+<li>☐ VM پیش از تغییر خاموش بوده است.</li>
+<li>☐ کنترلر PVSCSI و دیسک‌های موجود تغییر نکرده‌اند.</li>
+<li>☐ آرگومان VirtIO SCSI در پیکربندی ثبت شده است.</li>
+<li>☐ VM بدون خطا روشن شده است.</li>
+<li>☐ کنترلر در Device Manager بررسی شده و درایور مناسب نصب است.</li>
+<li>☐ اثر روش سفارشی بر Backup/Restore و Migration در محیط موردنظر آزمایش شده است.</li>
+</ul>
+<div class="notice success"><strong>یادآوری برای همکاران:</strong> ابتدا روی VM آزمایشی انجام دهید. VMID، مسیر ISO و نسخه Proxmox ممکن است در سرور شما متفاوت باشد. خروجی موفق یک محیط، تضمین‌کننده موفقیت روی همه محیط‌ها نیست.</div>
+</section>
+
+<footer>راهنمای داخلی قابل‌ویرایش — برای استفاده تیمی، مشخصات محیط و مراحل تأییدشده سازمان خود را به‌روز نگه دارید.</footer>
+</main>
+</body>
+</html>
